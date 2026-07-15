@@ -119,8 +119,10 @@ python -m pub_faiss_inference
 
 **Steps:**
 1. Open `ground_truth_precursor.ipynb`.
+   - update experiment paths with the newly create results (search for "experiments/")
    - Evaluate retrieval performance.
 2. Open `data/medical/feature_analysis.ipynb`.
+   - update experiment paths with the newly create results (search for "experiments/")
    - Inspect volcano plots and embedding structure.
    - Analyze PubChemLite features and natural product clusters.
 
