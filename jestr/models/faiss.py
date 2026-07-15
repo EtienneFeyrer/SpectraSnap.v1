@@ -11,7 +11,6 @@ import os
 import jestr.utils.models as model_utils
 from collections import defaultdict
 import numpy as np
-import json
 
 class FaissModel(pl.LightningModule, ABC):
     def __init__(
@@ -34,11 +33,9 @@ class FaissModel(pl.LightningModule, ABC):
         # convert to numpy array for faiss 
         enc = enc.detach().cpu().numpy().astype('float32')
         # build faiss index on gpu and move to cpu
-        res = faiss.StandardGpuResources()
         d = enc.shape[1]
-        gpu_index = faiss.GpuIndexFlatIP(res, d)
-        gpu_index.add(enc)
-        cpu_index = faiss.index_gpu_to_cpu(gpu_index)
+        cpu_index = faiss.IndexFlatIP(d)
+        cpu_index.add(enc)
         #print(f"Built FAISS index for batch {group_id} saving to {self.hparams['faiss_index_dir']}/index_{group_id}.faiss")
         os.makedirs(self.hparams['faiss_index_dir'], exist_ok=True)
         faiss.write_index(cpu_index, f"{self.hparams['faiss_index_dir']}/index_{group_id}.faiss")
@@ -62,7 +59,6 @@ class FaissModel(pl.LightningModule, ABC):
     #     return None
     
 
-
 class RetrievalFaissModel(pl.LightningModule, ABC):
     def __init__(
         self,
@@ -80,28 +76,8 @@ class RetrievalFaissModel(pl.LightningModule, ABC):
         
         # cache for FAISS indexes to avoid repeated disk reads
         self._index_cache = {}
-        # cache ppm errors for quality control
-        self._ppm_error_cache = {}
         # Keep retrieval on CPU; FAISS uses OpenMP threads for the search.
         faiss.omp_set_num_threads(max(1, os.cpu_count() or 1))
-
-    def get_bin_id_error(self, mass)-> str:
-        '''Input neutral mass/ pecursormass, output: bin with centroid closest to the neutral mass.'''
-        #print(f"DEBUG: Look up for neutral mass {mass}")
-        # 1. get list of index names
-        centroids = json.load(open(f"{self.faiss_index_path}/Registry/id_to_index_mapping.json", "r"))
-        # 2. get closest mass with faiss
-        faiss_index = faiss.read_index(f"{self.faiss_index_path}/Registry/centroid_index.faiss")
-        nearest_mass_id = faiss_index.search(np.array([[mass]], dtype="float32"), 1)[1][0][0]
-        nearest_mass = float(centroids[nearest_mass_id].split("_")[1].replace(".faiss", ""))
-        # 3. Look up filename
-        filename = centroids[nearest_mass_id]
-        # 4. Compute ppm error for quality of results
-        ppm_error = abs((mass - nearest_mass) / nearest_mass * 1e6)
-        #print(f"DEBUG: Nearest centroid mass{filename} with ppm error {ppm_error}")
-        # 4. return the corresponding bin id
-        file_path = f"{self.faiss_index_path}/{filename}"
-        return file_path, ppm_error, nearest_mass
 
     def predict_step(self, batch: dict, stage: Stage = Stage.NONE):
         '''Input: batch with spectrum view.
@@ -115,15 +91,10 @@ class RetrievalFaissModel(pl.LightningModule, ABC):
         enc = enc.detach().cpu().numpy().astype('float32')
         # search faiss index and PCA if applicable on CPU (cached for performance)
         spectrum_ids = batch['spec_id']
-        #neutral_masses = batch['neutral_mass']
-        precursor_mzs = batch['precursor_mz']
-        identifiers = batch['identifier']
         results = []
-        embeddings = []
         
         for i, spectrum_id in enumerate(spectrum_ids):
             enc_i = enc[i:i+1] # shape (1, d) for faiss search
-            embeddings.append(enc_i.tolist())
             spectrum_id = int(spectrum_id)
             
             # load index from cache or disk
@@ -135,27 +106,19 @@ class RetrievalFaissModel(pl.LightningModule, ABC):
                     enc_i = pca.apply_py(enc_i)
                     #print(f"Applied transform query has dimension {enc_i.shape}")
                 #print (f"Loading FAISS index from: {self.faiss_index_path}/index_{spectrum_id}.faiss")
-                #index_path = f"{self.faiss_index_path}/index_{spectrum_id}.faiss"
-                #neutral_mass = neutral_masses[i]
-                precursor_mz = precursor_mzs[i]
-                #index_path, ppm_error, nearest_mass = self.get_bin_id_error(neutral_mass)
-                index_path, ppm_error, nearest_mass = self.get_bin_id_error(precursor_mz)
+                index_path = f"{self.faiss_index_path}/index_{spectrum_id}.faiss"
                 self._index_cache[spectrum_id] = faiss.read_index(index_path)
-                
+            
             index = self._index_cache[spectrum_id]
             distances, indices = index.search(enc_i, self.hparams.k)
-            results.append({int(idx): {"distance": float(dist), "ppm_error": float(ppm_error)} for idx, dist, ppm_error in zip(indices[0], distances[0], [ppm_error] * len(indices[0]))})
+            results.append({int(idx): float(dist) for idx, dist in zip(indices[0], distances[0])})
         
-        # return single dict if batch size is 1, else return a dict with
-        # key: neutral mass and value: k-nearest neigbor results
-        #output = {identifiers[i]: {"embeddings": embeddings, "bin": nearest_mass, "results" : results[i]} for i in range(len(precursor_mzs  ))}
-        output = {identifiers[i]: {"embeddings" : embeddings, "bin": nearest_mass, "results" : results[i]} for i in range(len(precursor_mzs  ))}
-        #print(f"DEBUG: from Retrieval model: {output}")
-        return output
+        # return single dict if batch size is 1, else return list
+        return results[0] if len(results) == 1 else results 
     
     def forward(self, batch: dict, stage: Stage = Stage.NONE):
         '''Input: batch of spectra
-        Output: embeddinga of the spectra'''
+        Otput: embeddinga of the spectra'''
         spec_key = self.spec_view[0] if isinstance(self.spec_view, (list, tuple)) else self.spec_view
         spec = batch[spec_key]
         n_peaks = batch['n_peaks'] if 'n_peaks' in batch else None

@@ -13,7 +13,7 @@ from torch.utils.data.dataloader import default_collate
 import dgl
 from collections import defaultdict
 from massspecgym.data.transforms import SpecTransform, MolTransform, MolToInChIKey
-from massspecgym.data.datasets import MassSpecDataset, UnlabeledDataset, MassDataset
+from massspecgym.data.datasets import MassSpecDataset, UnlabeledDataset
 import jestr.utils.data as data_utils
 from torch.nn.utils.rnn import pad_sequence
 from massspecgym.models.base import Stage
@@ -114,15 +114,9 @@ class ContrastiveDataset(Dataset):
             # Stack spectra and collect IDs for downstream FAISS lookup.
             specs = [item[item_spec_key] for item in batch]
             spec_ids = [item["spec_id"] for item in batch]
-            #neutral_masses = [item["neutral_mass"] for item in batch]
-            precursor_mzs = [item["precursor_mz"] for item in batch]
-            spec_identifiers = [item.get("identifier") for item in batch]
             
             collated_batch[item_spec_key] = torch.stack(specs) if isinstance(specs[0], torch.Tensor) else default_collate(specs)
             collated_batch["spec_id"] = spec_ids
-            #collated_batch["neutral_mass"] = neutral_masses
-            collated_batch["precursor_mz"] = precursor_mzs
-            collated_batch["identifier"] = spec_identifiers
             
         elif stage == Stage.PRECOMPUTE:
             #print(f"DEBUG: collate_fn called with batch size {len(batch)}, stage=PRECOMPUTE")
@@ -424,79 +418,6 @@ class PrecomputeCandDataset(UnlabeledDataset):
             "group_id": i
         }
 
-class PrecomputeBinsDataset(MassDataset):
-    """
-    Dataset to precompute embedding bins and FAISS index.
-    Each item corresponds to one mass bin.
-
-    Output format:
-        {
-            "cand": List[DGLGraph] or None,
-            "cand_smiles": List[str],
-            "group_id": mass_bin_key
-        }
-    """
-
-    def __init__(
-        self,
-        mol_transform: T.Optional[MolTransform] = None,
-        mol_view: T.Optional[T.Union[str, T.List[str]]] = None,
-        **kwargs
-    ):
-        # MassDataset loads a dict: {mass_bin: [smiles]}
-        super().__init__(**kwargs)
-
-        self.mol_transform = mol_transform
-        self.mol_view = mol_view
-
-        # Filter out SMILES containing '.' for every mass bin
-        filtered = {}
-        removed_groups = 0
-
-        for mass, smiles_list in self.data.items():
-            clean = [s for s in smiles_list if "." not in s]
-            if len(clean) == 0:
-                removed_groups += 1
-                continue
-            filtered[mass] = clean
-
-        if removed_groups > 0:
-            print(f"WARNING: Removed {removed_groups} empty or invalid mass bins during PrecomputeBinsDataset initialization")
-
-        # Replace internal data + keys
-        self.data = filtered
-        self.keys = list(filtered.keys())
-
-    def __len__(self):
-        return len(self.keys)
-
-    def __getitem__(self, idx):
-        mass_bin = self.keys[idx]
-        cand_smiles = self.data[mass_bin]
-
-        # If no transform, return SMILES only
-        if self.mol_transform is None:
-            return {
-                "cand": None,
-                "cand_smiles": cand_smiles,
-                "group_id": mass_bin
-            }
-
-        # Apply mol_transform to each SMILES
-        transformed = []
-        for sm in cand_smiles:
-            try:
-                g = self.mol_transform(sm)
-                transformed.append(g)
-            except Exception as e:
-                print(f"ERROR: Failed to transform SMILES '{sm}': {type(e).__name__}: {e}")
-                raise
-
-        return {
-            "cand": transformed,      # list of DGLGraphs
-            "cand_smiles": cand_smiles,
-            "group_id": mass_bin      # mass bin centroid
-        }
 
 class SpecDataset(UnlabeledDataset):
     """Dataset for online spectrum embedding computation 
@@ -532,12 +453,7 @@ class SpecDataset(UnlabeledDataset):
             item["spec"] = spec
         
         # metadata not available for plain unlabeled spectra; return index as identifier
-        #TODO: should include the neutral mass for later reference to bins
         item["spec_id"] = i
-        #print(f"DEBUG: Retrieved spectrum with metadata: {spec.metadata}")
-        #item["neutral_mass"] = spec.get("neutral_mass")
-        item["precursor_mz"] = spec.get("precursor_mz")
-        item["identifier"] = spec.get("identifier")
         return item
         
         # if self.spec_transform is not None:

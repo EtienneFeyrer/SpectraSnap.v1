@@ -80,8 +80,7 @@ return a dataset that uses only one featurizer for testing and TODO: Wrapper Met
     if Stage(params['stage']) == Stage.PRECOMPUTE:
     #if spectra_featurizer is None:
         cand_params = {'mol_transform': mol_featurizer, 'raw_pth': params['candidates_pth'], 'mol_view': mol_view}
-        #return jestr_datasets.PrecomputeCandDataset(**cand_params) has to be uncommented for MASSSPECGYM test
-        return jestr_datasets.PrecomputeBinsDataset(**cand_params)
+        return jestr_datasets.PrecomputeCandDataset(**cand_params)
     if Stage(params['stage']) == Stage.TEST or Stage(params['stage']) == Stage.TRAIN or Stage(params['stage']) == Stage.VAL:
         #dataset_params = {'spectra_view': spectra_view, 'raw_pth': params['dataset_pth'], 'spec_transform': spectra_featurizer, 'mol_transform': mol_featurizer, "candidates_pth": params['candidates_pth']}
         dataset_params = {'spectra_view': spectra_view, 'pth': params['dataset_pth'], 'spec_transform': spectra_featurizer, 'mol_transform': mol_featurizer, "candidates_pth": params['candidates_pth']}

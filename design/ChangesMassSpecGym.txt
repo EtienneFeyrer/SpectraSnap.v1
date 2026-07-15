@@ -1,0 +1,337 @@
+Changes:
+Predict data module:
+class PredictDataModule(MassSpecDataModule):
+    def __init__(
+            self,
+            collate_fn,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.collate_fn = collate_fn
+
+    def prepare_data(self):
+        pass
+    
+    def setup(self, stage=None):
+        if stage == "predict":
+            self.predict_dataset = self.dataset
+        else:
+            raise Exception("Data module supports predict set only")
+        
+    def predict_dataloader(self):
+        #TODO this has to be changed to support the precompute
+        return DataLoader(
+            self.predict_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            persistent_workers=self.persistent_workers,
+            drop_last=False,
+            collate_fn=self.collate_fn,
+        )
+
+    def train_dataloader(self):
+        return None
+    
+    def val_dataset(self):
+        return None
+
+Datasets(jestr):
+class PrecomputeCandDataset(UnlabeledDataset):
+    """Dataset for precomputing candidate embeddings.
+       Inherits from UnlabeledDataset.
+    - Keeps raw candidate list groups from the base UnlabeledDataset.
+    - Removes candidates containing '.' (dot-containing entries are always filtered dots lead to error in mol_transform).
+    - Optionally applies mol_transform to each candidate in a group.
+    """
+    def __init__(self, mol_transform: T.Optional[MolTransform] = None, mol_view: T.Optional[T.Union[str, T.List[str]]] = None, **kwargs):
+        # kwargs are passed to the base UnlabeledDataset (expects candidates_pth, keys_order, ...)
+        super().__init__(**kwargs, expected_type=list)
+        self.mol_transform = mol_transform
+        self.mol_view = mol_view
+
+        # UnlabeledDataset stores the loaded JSON in self.data (list-of-lists expected)
+        # Keep list-of-lists form so each dataset idx corresponds to one candidate group.
+        # Filter out entries containing '.' and remove any groups that become empty
+        self.data = [
+            [c for c in cand_list if "." not in c]
+            for cand_list in self.data
+        ]
+        # Remove empty candidate groups to avoid producing None batches during collate
+        orig_len = len(self.data)
+        self.data = [group for group in self.data if len(group) > 0]
+        if len(self.data) < orig_len:
+            print(f"WARNING: Removed {orig_len - len(self.data)} empty candidate groups during PrecomputeCandDataset initialization")
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, i):
+        cand_smiles_group = self.data[i]
+
+        # Transform each SMILES into a DGLGraph
+        if self.mol_transform is not None:
+            transformed = []
+            for c in cand_smiles_group:
+                try:
+                    graph = self.mol_transform(c)
+                    transformed.append(graph)
+                except Exception as e:
+                    print(f"ERROR: Failed to transform SMILES '{c}': {type(e).__name__}: {e}")
+                    raise
+        else:
+            return {"cand_smiles": cand_smiles_group, "cand": None}
+            # raise ValueError("mol_transform must be provided for PrecomputeCandDataset")
+
+       # print(f"DEBUG: Transformed {len(cand_smiles_group)} SMILES to {len(transformed)} graphs")
+        return {
+            "cand": transformed,              # list of DGLGraphs
+            "cand_smiles": cand_smiles_group  # list of SMILES
+        }
+
+class SpecDataset(UnlabeledDataset):
+    """Dataset for online spectrum embedding computation 
+    or TODO: Wrapper Method in training.
+       Inherits from UnlabeledDataset.
+    - Builds a list of spectra items from the base UnlabeledDataset.
+    - Spectrum items are dicts containing all neccessary information.
+    - Applies spec_transform per-item when returned.
+    """
+    def __init__(self, spec_transform: T.Optional[SpecTransform] = None, **kwargs):
+        # kwargs are passed to the base UnlabeledDataset (expects dataset_pth, keys_order, ...)
+        super().__init__(raw_pth=kwargs.get('spectra_pth'), expected_type=matchms.Spectrum)
+        self.spec_transform = spec_transform
+        # UnlabeledDataset stores the loaded list directly in self.data
+        self.spectra = self.data
+
+    def json_load(self, pth: Path) -> T.List[matchms.Spectrum]:
+        return list(load_from_json(pth))
+
+    def __len__(self):
+        return len(self.spectra)
+
+    def __getitem__(self, i, transform_spec: bool = True):
+        spec = self.spectra[i]
+        item = {}
+        if transform_spec and self.spec_transform:
+            if isinstance(self.spec_transform, dict):
+                for key, transform in self.spec_transform.items():
+                    item[key] = transform(spec) if transform is not None else spec
+            else:
+                item["spec"] = self.spec_transform(spec)
+        else:
+            item["spec"] = spec
+        
+        # metadata not available for plain unlabeled spectra; return index as identifier
+        item["spec_id"] = i
+        return item
+
+Datasets(massspecgym):
+class UnlabeledDataset(Dataset):
+    """Minimal validator: ensure JSON is a list and elements match expected_type.
+    has to be a list of strings(smiles) a list of list of strings (candidates) 
+    or a list of matchms.Spectrum objects (spectra)."""
+    def __init__(
+        self,
+        raw_pth: T.Union[str, Path],
+        expected_type: T.Optional[T.Union[matchms.Spectrum, T.List[str], str]] = None, 
+        item_fn: T.Optional[T.Callable[[T.List[T.Any], int], dict]] = None,
+        collate_fn: T.Optional[T.Callable[[T.Iterable[dict]], dict]] = None,
+    ):
+        super().__init__()
+        if isinstance(raw_pth, str):
+            raw_pth = Path(raw_pth)
+        with open(raw_pth, "r") as fh:
+            raw = self.json_load(raw_pth)
+
+        if not isinstance(raw, list):
+            raise ValueError("UnlabeledDataset expects a JSON list.")
+        # checks that all elements are of the expected type
+        if expected_type is not None and not all(isinstance(x, expected_type) for x in raw):
+            raise ValueError(f"Expected list elements of type {expected_type}.")
+
+        self.raw = raw
+        self.data: T.List[T.Any] = raw
+        self._item_fn = item_fn or (lambda data, idx: {"item": data[idx], "index": idx})
+        self._collate_fn = collate_fn or (lambda b: default_collate(list(b)))
+    
+    def json_load(self, pth: Path) -> T.List[T.Any]:
+        with open(pth, "r") as fh:
+            return json.load(fh)
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __getitem__(self, idx: int) -> dict:
+        return self._item_fn(self.data, idx)
+
+    def collate_fn(self, batch: T.Iterable[dict]) -> dict:
+        return self._collate_fn(batch)
+Models:
+""" This file contains two models for the FAISS workflow:
+1. FaissModel 
+2. RetrievalFaissModel """
+from abc import ABC, abstractmethod
+import pytorch_lightning as pl
+from massspecgym.models.base import Stage
+from massspecgym.models.retrieval.base import RetrievalMassSpecGymModel
+import faiss
+import torch
+import os
+import jestr.utils.models as model_utils
+from collections import defaultdict
+
+class FaissModel(pl.LightningModule, ABC):
+    def __init__(
+        self,
+        **kwargs
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+        self.mol_enc_model = model_utils.get_mol_encoder(self.hparams.mol_enc, self.hparams)
+
+    def predict_step(self, batch: dict, stage: Stage = Stage.NONE):
+        '''Input: batch of candidate molecules.
+        Output: Faiss Index on cpu build on encodings
+        of the candidate molecules.'''
+        # use the forward method to get molecule encodings
+        encodings = self.forward(batch,stage)
+        # normalize encodings for cosine similarity L2 normalization
+        enc = torch.nn.functional.normalize(encodings, p=2, dim=1)
+        # convert to numpy array for faiss 
+        enc = enc.detach().cpu().numpy().astype('float32')
+        # build faiss index on gpu and move to cpu
+        res = faiss.StandardGpuResources()
+        d = enc.shape[1]
+        gpu_index = faiss.GpuIndexFlatIP(res, d)
+        gpu_index.add(enc)
+        cpu_index = faiss.index_gpu_to_cpu(gpu_index)
+        return cpu_index        
+
+    def forward(self, batch: dict, stage: Stage = Stage.NONE):
+        '''Returns molecule embeddings given a batch of 
+        candidate molecules.'''
+        g = batch['cand']
+        return self.mol_enc_model(g)
+    
+    # def on_predict_epoch_end(self):
+    #     '''Input: Outputs from each batch in this case a list of faiss indexes.
+    #     Output: None, but saves the indexes to disk.'''
+    #     outputs = self._output
+    #     #check if directory exists and create if not
+    #     os.makedirs(self.hparams['faiss_index_dir'], exist_ok=True)
+    #     #save each index file to disk
+    #     for i, index in enumerate(outputs): #outputs are ordered according to batch index
+    #         faiss.write_index(index, f"{self.hparams['faiss_index_dir']}/index_{i}.faiss")
+    #     return None
+    
+
+class RetrievalFaissModel(pl.LightningModule, ABC):
+    def __init__(
+        self,
+        **kwargs
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+        self.spec_enc_model = model_utils.get_spec_encoder(self.hparams.spec_enc, self.hparams)
+        self.spec_view = self.hparams.spectra_view
+        self.faiss_index_path = getattr(self.hparams, "faiss_index_dir", None)
+        
+        # result storage for testing results
+        self.result_dct = defaultdict(lambda: defaultdict(list))
+        
+        # cache for FAISS indexes to avoid repeated disk reads
+        self._index_cache = {}
+        # Keep retrieval on CPU; FAISS uses OpenMP threads for the search.
+        faiss.omp_set_num_threads(max(1, os.cpu_count() or 1))
+
+    def predict_step(self, batch: dict, stage: Stage = Stage.NONE):
+        '''Input: batch with spectrum view.
+        Output: Dictionary containing k entries where key is the k 
+        and value is the distance to the k'st neighbor.'''
+        # use the forward method to get molecule encodings
+        encoding = self.forward(batch, stage)
+        # normalize encodings for cosine similarity L2 normalization
+        enc = torch.nn.functional.normalize(encoding, p=2, dim=1)
+        # convert to numpy array for faiss 
+        enc = enc.detach().cpu().numpy().astype('float32')
+        # search faiss index on CPU (cached for performance)
+        spectrum_ids = batch['spec_id']
+        results = []
+        
+        for i, spectrum_id in enumerate(spectrum_ids):
+            spectrum_id = int(spectrum_id)
+            
+            # load index from cache or disk
+            if spectrum_id not in self._index_cache:
+                index_path = f"{self.faiss_index_path}/index_{spectrum_id}.faiss"
+                self._index_cache[spectrum_id] = faiss.read_index(index_path)
+            
+            index = self._index_cache[spectrum_id]
+            distances, indices = index.search(enc[i:i+1], self.hparams.k)
+            results.append({int(idx): float(dist) for idx, dist in zip(indices[0], distances[0])})
+        
+        # return single dict if batch size is 1, else return list
+        return results[0] if len(results) == 1 else results 
+    
+    def forward(self, batch: dict, stage: Stage = Stage.NONE):
+        '''Input: batch of spectra
+        Otput: embeddinga of the spectra'''
+        spec_key = self.spec_view[0] if isinstance(self.spec_view, (list, tuple)) else self.spec_view
+        spec = batch[spec_key]
+        n_peaks = batch['n_peaks'] if 'n_peaks' in batch else None
+        spec_enc = self.spec_enc_model(spec, n_peaks)
+        return spec_enc
+
+Changes no additions:
+changed collate_fn in 
+Dataset> ContrastiveDataset
+
+massspecgym > base.py 
+class stage
+class Stage(Enum):
+
+    TRAIN = 'train'
+    VAL = 'val'
+    TEST = 'test'
+    PRECOMPUTE = 'precompute'
+    ONLINE_TEST = 'online_test'
+    NONE = 'none'
+
+    def to_pref(self) -> str:
+        return f"{self.value}_" if self != Stage.NONE else ""
+
+added two new stages:
+PRECOMPUTE = 'precompute'
+    ONLINE_TEST = 'online_test'
+
+in jestr utils data.py changed following method
+def get_test_ms_dataset(params,
+                        spectra_view: T.Optional[T.Union[str, T.List[str]]]=None,
+                 mol_view: T.Optional[T.Union[str, T.List[str]]]=None,
+                 spectra_featurizer: T.Optional[SpecTransform]=None,
+                 mol_featurizer: T.Optional[MolTransform]=None):
+    """Get dataset for testing - if both spectra and molecule featurizers
+are provided, return a dataset that uses both. If only one is provided,
+return a dataset that uses only one featurizer for testing and TODO: Wrapper Methods"""
+    # If only spectra are provided (no molecule featurizer), return a spectra-only dataset if available
+    if mol_featurizer is None:
+        # JESTR1_MassSpecDataset expects spec_transform and spectra_view
+        spec_only_params = {'spectra_pth': params['spectra_pth'], 'spec_transform': spectra_featurizer, 'spectra_view': spectra_view}
+        return jestr_datasets.SpecDataset(**spec_only_params)
+
+    # If only molecules are provided (no spectra featurizer), try to return a precompute/candidate-only dataset
+    if spectra_featurizer is None:
+        cand_params = {'mol_transform': mol_featurizer, 'raw_pth': params['candidates_pth'], 'mol_view': mol_view}
+        return jestr_datasets.PrecomputeCandDataset(**cand_params)
+    
+    #dataset_params = {'spectra_view': spectra_view, 'raw_pth': params['dataset_pth'], 'spec_transform': spectra_featurizer, 'mol_transform': mol_featurizer, "candidates_pth": params['candidates_pth']}
+    dataset_params = {'spectra_view': spectra_view, 'pth': params['dataset_pth'], 'spec_transform': spectra_featurizer, 'mol_transform': mol_featurizer, "candidates_pth": params['candidates_pth']}
+
+    # dataset_params = {'spectra_view': spectra_view, 'spec_transform': spectra_featurizer, 'mol_transform': mol_featurizer}
+    # Default: retrieval dataset that uses both transforms
+    return jestr_datasets.ExpandedRetrievalDataset(**dataset_params)
+
+added logic to handle assignment of new datasets
+
+
