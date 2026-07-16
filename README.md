@@ -1,12 +1,4 @@
 # **SpectraSnap — Fast MS/MS Molecule Retrieval with JESTR**
-
-SpectraSnap applies the **JESTR** joint‑embedding model to real‑world MS/MS data, including the breast cancer dataset from **FLARE**. It provides pretrained weights, preprocessing scripts, FAISS‑based retrieval, and analysis notebooks.  
-**On a consumer‑grade laptop (4 CPU cores), SpectraSnap annotates ~9,000 molecules in under 13 minutes — making it one of the fastest open MS/MS retrieval pipelines available.**
-
----
-
-## Included resources
-
 **Model & index**
 - Pretrained JESTR weights (trained on MassSpecGym)
 - FAISS precursor index for fast retrieval  
