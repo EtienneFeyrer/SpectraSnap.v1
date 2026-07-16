@@ -55,9 +55,9 @@ def faiss_to_unified_format(faiss_results, dict_of_candidates):
                 collisions.append(key)
             flat_dict[key] = value
 
-    print(f"DEBUG: size of dictionary with all faiss results: {len(flat_dict)}")
-    print(f"DEBUG: number of collisions: {len(collisions)}")
-    print(f"DEBUG: collisions: {collisions}")
+    #print(f"DEBUG: size of dictionary with all faiss results: {len(flat_dict)}")
+    #print(f"DEBUG: number of collisions: {len(collisions)}")
+    #print(f"DEBUG: collisions: {collisions}")
     # iterate in the same order as input
     for i, (identifier, entry) in enumerate(flat_dict.items()):
         results = entry["results"]

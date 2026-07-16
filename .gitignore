@@ -4,3 +4,6 @@ data/batch*
 data/medical
 data/pubchemlite.zip
 data/pubchemlite
+experiments/*
+__pycache__/
+*.pyc

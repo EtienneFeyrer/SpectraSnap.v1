@@ -28,6 +28,9 @@ pip install --no-deps torchdata==0.7.1
 # Install DGL CUDA 12
 pip install --no-deps dgl==2.1.0 -f https://data.dgl.ai/wheels/cu121/repo.html
 
+# Install faiss-cpu
+pip install faiss-cpu==1.7.4 --no-cache-dir
+
 # Clean up
-conda clean -all
-pip cache purge
+#conda clean --all -y
+#pip cache purge

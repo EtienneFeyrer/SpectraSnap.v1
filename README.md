@@ -1,4 +1,13 @@
 # **SpectraSnap — Fast MS/MS Molecule Retrieval with JESTR**
+
+SpectraSnap applies the **JESTR** joint‑embedding model to real‑world MS/MS data, including the breast cancer dataset from **FLARE**. It provides pretrained weights, preprocessing scripts, FAISS‑based retrieval, and analysis notebooks.  
+**On a consumer‑grade laptop (4 CPU cores), SpectraSnap annotates ~9,000 molecules in under 13 minutes — making it one of the fastest open MS/MS retrieval pipelines available.**
+
+**Prerequisites**
+- Linux
+- NVIDIA GPU with CUDA support
+- CUDA drivers installed
+
 **Model & index**
 - Pretrained JESTR weights (trained on MassSpecGym)
 - FAISS precursor index for fast retrieval  
@@ -37,10 +46,9 @@ conda activate jestr
 
 ## 2) Get medical and PubChemLite data
 
-The **medical** and **pubchemlite** datasets are only available upon request and are **not** part of the GitHub Release.
+The **pubchemlite** folder can be dowloaded from GitHub Release the **medical** folder with MS sample data will be provided soon.
 
 **Steps:**
-1. Open the provided SharePoint link for SpectraSnap data.
 2. Download the `medical` folder.
 3. Download the `pubchemlite` folder.
 4. Place both folders inside `SpectraSnap.v1/data/`.
@@ -95,10 +103,10 @@ python -m pub_faiss_inference
 
 **Steps:**
 1. Open `ground_truth_precursor.ipynb`.
-   - update experiment paths with the newly create results (search for "experiments/")
+   - update result path with the newly create results (search for "experiments/")
    - Evaluate retrieval performance.
-2. Open `data/medical/feature_analysis.ipynb`.
-   - update experiment paths with the newly create results (search for "experiments/")
+2. Open `data_scipts/medical/feature_analysis.ipynb`.
+   - update result path with the newly create results (search for "experiments/")
    - Inspect volcano plots and embedding structure.
    - Analyze PubChemLite features and natural product clusters.
 
