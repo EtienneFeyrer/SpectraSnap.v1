@@ -14,7 +14,7 @@ dependencies:
   - torchaudio
 
   # GPU libraries
-  - faiss-cpu=1.7.4 #faiss-gpu
+  #- faiss-cpu=1.7.4 #faiss-gpu
   - cudnn
 
   # Scientific core

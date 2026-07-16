@@ -10,9 +10,6 @@ conda env create -f requirements/cuda.yaml
 # Activate environment
 conda activate jestr
 
-# Install scientific stack
-conda env update -f requirements/scientific.yaml 
-
 # Install pip packages
 pip install -r requirements/requirements.txt
 
@@ -30,3 +27,10 @@ pip install --no-deps torchdata==0.7.1
 
 # Install DGL CUDA 12
 pip install --no-deps dgl==2.1.0 -f https://data.dgl.ai/wheels/cu121/repo.html
+
+# Install faiss-cpu
+pip install faiss-cpu==1.7.4 --no-cache-dir
+
+# Clean up
+#conda clean --all -y
+#pip cache purge
