@@ -44,14 +44,14 @@ conda activate jestr
 
 ---
 
-## 2) Get medical and PubChemLite data
+## 2) Get MS Data and PubChemLite data
 
 The **pubchemlite** folder can be dowloaded from GitHub Release the **medical** folder with MS sample data will be provided soon.
 
 **Steps:**
-2. Download the `medical` folder.
-3. Download the `pubchemlite` folder.
-4. Place both folders inside `SpectraSnap.v1/data/`.
+1. Prepare your MS data to match the MS sample Data provided in the `medical` folder.
+2. Download the `pubchemlite` folder.
+3. Place both folders inside `SpectraSnap.v1/data/`.
 
 ---
 
@@ -84,8 +84,8 @@ cd datascripts/medical
 python -m parse_to_mgf.py "RFA MSMS.txt" "RFA MSMS.mgf" 
 #3.Step convert MS2 scan to json (all with adduct)
 python -m parse_to_json.py "RFA MSMS.txt" "RFA MSMS_n.json"
+#4.Step Execute `datascripts/preprocess_precursor.ipynb` to realign MS1/MS2 data.
 ```
-4. Execute `datascripts/preprocess_precursor.ipynb` to realign MS1/MS2 data.
 
 ---
 
