@@ -4,7 +4,6 @@ SpectraSnap applies the **JESTR** joint‑embedding model to real‑world MS/MS 
 **On a consumer‑grade laptop (4 CPU cores), SpectraSnap annotates ~9,000 molecules in under 13 minutes — making it one of the fastest open MS/MS retrieval pipelines available.**
 
 ---
----
 
 ## Included resources
 
@@ -35,8 +34,12 @@ SpectraSnap applies the **JESTR** joint‑embedding model to real‑world MS/MS 
 1. Install Miniforge.
 2. Configure `conda` to use `conda‑forge` as the only active channel.
 3. Edit `setup_env.sh` so it points to your `conda.sh`.
-4. Run `setup_env.sh` to create the `jestr` environment.
-5. Activate the `jestr` environment.
+4. Create jestr environment
+```bash
+bash setup_env.sh
+conda activate jestr
+```
+
 
 ---
 
@@ -48,47 +51,28 @@ The **medical** and **pubchemlite** datasets are only available upon request and
 1. Open the provided SharePoint link for SpectraSnap data.
 2. Download the `medical` folder.
 3. Download the `pubchemlite` folder.
-4. Place both folders inside `SpectraSnap/data/`.
+4. Place both folders inside `SpectraSnap.v1/data/`.
 
 ---
 
-
 ## 3) Download FAISS precursor index from the release
 
-You can download the FAISS index tarballs from the public release.
+You can download the FAISS index tarballs from the public release. The tarballs were constructed using [GNU parallel](https://doi.org/10.5281/zenodo.1146014)
 
 **Steps:**
 1. Ensure you are inside the `SpectraSnap` repository directory.
 2. Use Browser or GitHub CLI to download all release assets matching the precursor index tarballs (pattern `batch_*.tar`) for tag `v1.0.0`.
 3. Verify that all tarball files are present in your local `data` directory.
-
----
-
-### 5) Reconstruct the original `data/precursor_indexes` directory
-
-The tarballs contain the original FAISS precursor index structure.  
-You must unpack them into the correct location.
-
----
-
-### **Option A — Using the provided unpack script**
-
-Run:
+4. Reconstruct the original `precursor_indexes` directory
 
 ```bash
 cd data
 bash unpack_index.sh
 ```
 
-### **Option B — direct download**
-
-```bash
-bash tar -xf precursor_indexes.tar
-```
-
 ---
 
-## 6) Optional: Rebuild input files
+## 4) Optional: Rebuild input files
 
 If you want to regenerate JSON and MGF files:
 
@@ -105,7 +89,7 @@ python -m parse_to_json.py "RFA MSMS.txt" "RFA MSMS_n.json"
 
 ---
 
-## 7) Run SpectraSnap retrieval
+## 5) Run SpectraSnap retrieval
 
 **Steps:**
 ```bash
@@ -115,7 +99,7 @@ python -m pub_faiss_inference
 
 ---
 
-## 8) Perform downstream analysis
+## 5) Perform downstream analysis
 
 **Steps:**
 1. Open `ground_truth_precursor.ipynb`.
