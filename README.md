@@ -1,4 +1,4 @@
-# **SpectraSnap — Fast MS/MS Molecule Retrieval with JESTR**
+# **SpectraSnap - Fast MS/MS Molecule Retrieval with JESTR**
 
 SpectraSnap applies the **JESTR** joint‑embedding model to real‑world MS/MS data, including the breast cancer dataset from **FLARE**. It provides pretrained weights, preprocessing scripts, FAISS‑based retrieval, and analysis notebooks.  
 **On a consumer‑grade laptop (4 CPU cores), SpectraSnap annotates ~9,000 molecules in under 13 minutes — making it one of the fastest open MS/MS retrieval pipelines available.**
@@ -11,21 +11,21 @@ SpectraSnap applies the **JESTR** joint‑embedding model to real‑world MS/MS 
 **Model & index**
 - Pretrained JESTR weights (trained on MassSpecGym)
 - FAISS precursor index for fast retrieval  
-  - `data/precursor_indexes/` (large files — downloaded via GitHub Release)
+  - `data/precursor_indexes/` (large files - downloaded via GitHub Release)
 
 **Real‑world cancer dataset(not provided)**
-- `data/medical/Inhousematch.csv` — ground‑truth matches  
-- `data/medical/RFA MSMS.txt` — MS2 scans  
-- `data/medical/ST003752_AN006162_Results.txt` — MS1 features  
-- `data/medical/Sample_ID.csv` — condition label  
+- `data/medical/Inhousematch.csv` - ground‑truth matches  
+- `data/medical/RFA MSMS.txt` - MS2 scans  
+- `data/medical/ST003752_AN006162_Results.txt` - MS1 features  
+- `data/medical/Sample_ID.csv` - condition label  
 
 **Preprocessing tools**
-- `datascripts/parse_to_json.py` — convert MS2 scans into JSON  
-- `datascripts/parse_to_mgf.py` — convert MS2 scans into MGF  
-- `datascripts/preprocess_precursor.ipynb` — align MS1/MS2 data  
+- `datascripts/parse_to_json.py` - convert MS2 scans into JSON  
+- `datascripts/parse_to_mgf.py` - convert MS2 scans into MGF  
+- `datascripts/preprocess_precursor.ipynb` - align MS1/MS2 data  
 
 **Analysis**
-- `data/medical/feature_analysis.ipynb` — retrieval evaluation & biological insights  
+- `data/medical/feature_analysis.ipynb` - retrieval evaluation & biological insights  
 
 ---
 
